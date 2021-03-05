@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use clap::{Arg, App};
 
 pub struct WordSplitter {
     words: Vec<String>,
@@ -69,16 +70,32 @@ fn get_highlight_letter(word: &str) -> usize {
     word.len() / 2
 }
 
-fn main() {
+fn run() -> Result<(), ()> {
+    let matches = App::new("Rusty Reader")
+    .version("0.1")
+    .author("Heringer <heringer@protonmail.com>")
+    .about("Tool for speed reading text files")
+    .arg(Arg::with_name("INPUT")
+         .help("Sets the input file to use")
+         .required(true)
+         .index(1))
+    .get_matches();
+
+    let filename = matches.value_of("INPUT").unwrap();
+
+    let mut reader = match WordSplitter::new(filename) {
+        Some(x) => x,
+        None => { eprintln!("Could not read file. Please input a valid filename."); return Err(()); }
+    };
+
     let stdout = stdout();
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
     let mut stdin = async_stdin().bytes();
 
-    let mut reader = WordSplitter::new("/home/heringer/Downloads/ThomsonDefenseOfAbortion.txt").unwrap();
-
     let mut active = true;
     let mut word = String::new();
     let mut wpm = 200.0f64;
+    let mut sentence_count = 0;
 
     write!(stdout,
            "{}{}{}",
@@ -92,9 +109,9 @@ fn main() {
         // Clear remaining input buffer
         while stdin.next().is_some() {}
 
+        write!(stdout, "{}", termion::clear::All).unwrap();
         //write!(stdout, "{}{}", termion::cursor::Goto(1, 4), termion::clear::CurrentLine).unwrap();
         //write!(stdout, "\r{:?}    <- Async. \n\r", b).unwrap();
-        write!(stdout, "{}", termion::clear::All).unwrap();
 
         if let Some(Ok(b'q')) = b {
             // Show terminal cursor again
@@ -110,8 +127,10 @@ fn main() {
             if wpm > 40.0 {
                 wpm -= 10.0;
             }
-        } else if let Some(Ok(b'c')) = b {
-            write!(stdout, "{}", termion::clear::All);
+        }
+
+        if word.len() > 0 && word.chars().last().unwrap() == '.' {
+            sentence_count += 1;
         }
 
         stdout.flush().unwrap();
@@ -148,17 +167,27 @@ fn main() {
 
         // Write word
         write!(stdout, "{}{}", termion::cursor::Goto(1, height / 2), termion::clear::CurrentLine).unwrap();
-        println!("{:>half$}{}{}{}{}", &word[..hlindex], color::Fg(color::Red), &word[hlindex..hlindex+1], color::Fg(color::Reset), &word[hlindex+1..], half = (width / 2) as usize);
-        write!(stdout, "{}", termion::cursor::Goto(1, height / 2 - 1));
+        if word.len() > 0 {
+            println!("{:>half$}{}{}{}{}", &word[..hlindex], color::Fg(color::Red), &word[hlindex..hlindex+1], color::Fg(color::Reset), &word[hlindex+1..], half = (width / 2) as usize);
+        }
+        write!(stdout, "{}", termion::cursor::Goto(1, height / 2 - 1)).unwrap();
         println!("{:>half$}{}|{}", " ", color::Fg(color::Red), color::Fg(color::Reset), half = (width / 2) as usize);
-        write!(stdout, "{}", termion::cursor::Goto(1, height / 2 + 1));
+        write!(stdout, "{}", termion::cursor::Goto(1, height / 2 + 1)).unwrap();
         println!("{:>half$}{}|{}", " ", color::Fg(color::Red), color::Fg(color::Reset), half = (width / 2) as usize);
 
         // Write status line
         write!(stdout, "{}{}", termion::cursor::Goto(1, 1), termion::clear::CurrentLine).unwrap();
-        println!("{}\tWords per minute: {}", status, wpm as u32);
+        println!("{}\tSentence: {}\tWords per minute: {}", status, sentence_count, wpm as u32);
         thread::sleep(timeout);
     }
     // Show the cursor again before we exit.
     write!(stdout, "{}", termion::cursor::Show).unwrap();
+    Ok(())
+}
+
+fn main() {
+    std::process::exit(match run() {
+        Ok(_) => 0,
+        Err(_) => 1
+    });
 }
