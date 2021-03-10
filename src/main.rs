@@ -8,6 +8,7 @@ use std::time::Duration;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use clap::{Arg, App};
+use unicode_segmentation::UnicodeSegmentation;
 
 pub struct WordSplitter {
     words: Vec<String>,
@@ -39,7 +40,7 @@ impl<'a> WordSplitter {
         };
         let res = res.clone();
         self.pointer += 1;
-        if self.pointer == self.words.len() {
+        if self.words.len() == 100 && self.pointer == self.words.len() {
             self.read_new_lines();
         }
         Some(res)
@@ -49,7 +50,9 @@ impl<'a> WordSplitter {
         let mut text = String::new();
         for _ in 0..100 {
             let mut line = String::new();
-            if self.file_obj.read_line(&mut line).is_err() {
+            let read_res = self.file_obj.read_line(&mut line);
+            if read_res.is_err() {
+                println!("Error while reading file!");
                 break;
             }
             text += &line;
@@ -60,10 +63,10 @@ impl<'a> WordSplitter {
 }
 
 fn get_highlight_letter(word: &str) -> usize {
-    let chars: Vec<char> = word.chars().collect();
+    let graphemes: Vec<&str> = word.graphemes(true).collect();
     for i in (word.len() / 5)..(word.len() / 2) {
-        match chars[i] {
-            'a' | 'e' | 'i' | 'o' | 'u' | 'ä' | 'ö' | 'ü' => return i,
+        match graphemes[i] {
+            "a" | "e" | "i" | "o" | "u" | "ä" | "ö" | "ü" => return i,
             _ => (),
         }
     }
@@ -110,8 +113,6 @@ fn run() -> Result<(), ()> {
         while stdin.next().is_some() {}
 
         write!(stdout, "{}", termion::clear::All).unwrap();
-        //write!(stdout, "{}{}", termion::cursor::Goto(1, 4), termion::clear::CurrentLine).unwrap();
-        //write!(stdout, "\r{:?}    <- Async. \n\r", b).unwrap();
 
         if let Some(Ok(b'q')) = b {
             // Show terminal cursor again
@@ -137,7 +138,7 @@ fn run() -> Result<(), ()> {
         if active {
             word = match reader.get_next_word() {
                 Some(x) => x,
-                None => break,
+                None => { println!("File end"); break },
             };
         }
 
@@ -146,9 +147,9 @@ fn run() -> Result<(), ()> {
             timeout += (timeout / 5) * (word.len() as u32 - 6);
         }
         if word.len() > 0 {
-            timeout += match word.chars().last().unwrap() {
-                ',' => timeout / 2,
-                '.' | '?' | '!' => timeout.mul_f64(1.5),
+            timeout += match word.graphemes(true).last().unwrap() {
+                "," => timeout / 2,
+                "." | "?" | "!" => timeout.mul_f64(1.5),
                 _ => Duration::new(0, 0),
             }
         }
@@ -168,7 +169,11 @@ fn run() -> Result<(), ()> {
         // Write word
         write!(stdout, "{}{}", termion::cursor::Goto(1, height / 2), termion::clear::CurrentLine).unwrap();
         if word.len() > 0 {
-            println!("{:>half$}{}{}{}{}", &word[..hlindex], color::Fg(color::Red), &word[hlindex..hlindex+1], color::Fg(color::Reset), &word[hlindex+1..], half = (width / 2) as usize);
+            let grapheme_word: Vec<&str> = word.graphemes(true).collect();
+            let prefix = &grapheme_word[..hlindex].join("");
+            let highlight_letter = grapheme_word[hlindex];
+            let suffix = &grapheme_word[hlindex+1..].join("");
+            println!("{:>half$}{}{}{}{}", prefix, color::Fg(color::Red), highlight_letter, color::Fg(color::Reset), suffix, half = (width / 2) as usize);
         }
         write!(stdout, "{}", termion::cursor::Goto(1, height / 2 - 1)).unwrap();
         println!("{:>half$}{}|{}", " ", color::Fg(color::Red), color::Fg(color::Reset), half = (width / 2) as usize);
