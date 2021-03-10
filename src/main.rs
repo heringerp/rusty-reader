@@ -168,7 +168,9 @@ fn run() -> Result<(), ()> {
 
         // Write word
         write!(stdout, "{}{}", termion::cursor::Goto(1, height / 2), termion::clear::CurrentLine).unwrap();
-        if word.len() > 0 {
+        if word.graphemes(true).collect::<Vec<&str>>().len() == 1 {
+            println!("{:>half$}{}{}{}", "", color::Fg(color::Red), word, color::Fg(color::Reset), half = (width / 2) as usize);
+        } else if word.len() > 0 {
             let grapheme_word: Vec<&str> = word.graphemes(true).collect();
             let prefix = &grapheme_word[..hlindex].join("");
             let highlight_letter = grapheme_word[hlindex];
